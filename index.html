@@ -271,16 +271,16 @@
           <div class="console-main">
             <p class="c-label">1 · Give a voice command</p>
             <div class="mic-row">
-              <button class="mic-btn" id="micBtn" aria-label="Play a voice command">
+              <button class="mic-btn" id="micBtn" aria-label="Start voice command — tap, then speak" aria-pressed="false">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
               </button>
               <div class="wave" id="wave" aria-hidden="true"></div>
             </div>
-            <p class="mic-hint">Tap the mic or pick a <strong>sample command</strong> below. You can also type your command — send it from anywhere, the agent on the laptop does the rest.</p>
+            <p class="mic-hint">Tap the mic, allow microphone access, then <strong>speak your command</strong> — nothing runs until you have finished speaking. Tap the mic again to stop. Or type your command below, or pick a sample command to run it straight away.</p>
 
             <div class="transcript">
               <div class="who"><span>Your voice → text</span><span class="mono" id="recTime"></span></div>
-              <p id="transcriptText"><span class="empty">No command yet. Tap the mic — the agent listens, understands, and gets to work.</span></p>
+              <p id="transcriptText"><span class="empty">No command yet. Tap the mic and speak — the agent waits for your words before doing anything.</span></p>
             </div>
 
             <form class="cmd-form" id="cmdForm">
@@ -612,37 +612,130 @@
           document.querySelectorAll("#fileList li").forEach(function(li){ li.classList.remove("open"); });
         }
 
-        function runReport(key, customText){
-          if(running) return; running=true; sendBtn.disabled=true; micBtn.disabled=true;
+        function runSteps(R){
+          stepsEls.forEach(function(li, idx){
+            later(function(){
+              stepsEls.forEach(function(x){ x.classList.remove("active"); });
+              li.classList.add("active");
+              var ic=li.querySelector(".ic"); ic.innerHTML="<span class='spin'></span>";
+              if(idx===1){ var fl=document.querySelector('#fileList li[data-file="'+R.file+'"]'); if(fl) fl.classList.add("open"); }
+              setStatus(["Understanding your command…","Opening the file…","Reading the data…","Building the report…","Preparing the Excel file…"][idx], true);
+            }, idx*950);
+            later(function(){ li.classList.remove("active"); li.classList.add("done");
+              li.querySelector(".ic").innerHTML="<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6 9 17l-5-5'/></svg>";
+            }, idx*950+880);
+          });
+          later(function(){ showResult(R); running=false; sendBtn.disabled=false; micBtn.disabled=false;
+            setStatus("Ready — your report is done", false); }, stepsEls.length*950+500);
+        }
+
+        /* Runs a report for an explicit command only — a typed command, a
+           tapped sample command, or a finished voice transcript. It never
+           runs on its own: something the user said or chose comes first. */
+        function runReport(key, customText, alreadyHeard){
+          if(running || listening) return; running=true; sendBtn.disabled=true; micBtn.disabled=true;
           clearTimers(); resetSteps(); resultEl.classList.remove("show");
           var R=REPORTS[key]; currentReport=R;
           var spoken = customText || R.cmd;
           document.querySelector('[data-file-line]').textContent=R.fileLine;
           document.querySelector('[data-read-line]').textContent=R.readLine;
+          setStatus("Command received — getting to work", true);
+          if(alreadyHeard){
+            transcriptEl.textContent="“"+spoken+"”";
+            runSteps(R);
+          } else {
+            typeText(spoken, function(){ runSteps(R); });
+          }
+        }
 
-          setStatus("Listening…", true); micBtn.classList.add("listening"); waveStart();
-          recTime.textContent="REC 0:0"+(3+Math.floor(Math.random()*4));
+        /* ---------- real voice input ----------
+           Tapping the mic only STARTS listening. No step runs and no report
+           is built until the browser returns a finished transcript of what
+           the user actually said. */
+        var listening=false, recognition=null, voiceFinal="", voiceError="";
+        var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-          later(function(){
-            micBtn.classList.remove("listening"); waveStop();
-            setStatus("Command received — getting to work", true);
-            typeText(spoken, function(){
-              stepsEls.forEach(function(li, idx){
-                later(function(){
-                  stepsEls.forEach(function(x){ x.classList.remove("active"); });
-                  li.classList.add("active");
-                  var ic=li.querySelector(".ic"); ic.innerHTML="<span class='spin'></span>";
-                  if(idx===1){ var fl=document.querySelector('#fileList li[data-file="'+R.file+'"]'); if(fl) fl.classList.add("open"); }
-                  setStatus(["Understanding your voice…","Opening the file…","Reading the data…","Building the report…","Preparing the Excel file…"][idx], true);
-                }, idx*950);
-                later(function(){ li.classList.remove("active"); li.classList.add("done");
-                  li.querySelector(".ic").innerHTML="<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6 9 17l-5-5'/></svg>";
-                }, idx*950+880);
-              });
-              later(function(){ showResult(R); running=false; sendBtn.disabled=false; micBtn.disabled=false;
-                setStatus("Ready — your report is done", false); }, stepsEls.length*950+500);
-            });
-          }, 1100);
+        function endListeningUI(){
+          listening=false;
+          micBtn.classList.remove("listening");
+          micBtn.setAttribute("aria-pressed","false");
+          micBtn.setAttribute("aria-label","Start voice command — tap, then speak");
+          waveStop();
+        }
+
+        function startVoice(){
+          if(running) return;
+          if(listening){ if(recognition){ try{ recognition.stop(); }catch(e){} } return; }
+          if(!SpeechRec){
+            transcriptEl.innerHTML="<span class='empty'>Voice input is not available in this browser, so nothing was run. Please type your command below, or tap a sample command.</span>";
+            setStatus("Ready — type a command or tap a sample", false);
+            toast("Voice input is not available in this browser — type your command instead");
+            document.getElementById("cmdInput").focus();
+            return;
+          }
+          voiceFinal=""; voiceError="";
+          try{ recognition=new SpeechRec(); }catch(e){
+            transcriptEl.innerHTML="<span class='empty'>Voice input could not start, so nothing was run. Please type your command below.</span>";
+            toast("Voice input could not start — type your command instead");
+            return;
+          }
+          recognition.lang="en-US";
+          recognition.interimResults=true;
+          recognition.continuous=false;
+          recognition.maxAlternatives=1;
+
+          listening=true;
+          micBtn.classList.add("listening");
+          micBtn.setAttribute("aria-pressed","true");
+          micBtn.setAttribute("aria-label","Stop listening");
+          waveStart();
+          setStatus("Listening… speak now", true);
+          recTime.textContent="● REC — listening";
+          transcriptEl.innerHTML="<span class='empty'>Listening… speak now. The agent will act only after you finish speaking.</span>";
+
+          recognition.onresult=function(ev){
+            var interim="", finalTxt="";
+            for(var i=ev.resultIndex;i<ev.results.length;i++){
+              if(ev.results[i].isFinal) finalTxt+=ev.results[i][0].transcript;
+              else interim+=ev.results[i][0].transcript;
+            }
+            var heard=(finalTxt||interim).trim();
+            if(heard) transcriptEl.textContent="“"+heard+"”";
+            if(finalTxt.trim()) voiceFinal=finalTxt.trim();
+          };
+          recognition.onerror=function(ev){
+            voiceError=ev.error||"error";
+          };
+          recognition.onend=function(){
+            var heardFinal=voiceFinal, err=voiceError;
+            endListeningUI();
+            recognition=null;
+            if(heardFinal){
+              recTime.textContent="";
+              runReport(pickReport(heardFinal), heardFinal, true);
+              return;
+            }
+            recTime.textContent="";
+            if(err==="not-allowed" || err==="service-not-allowed"){
+              transcriptEl.innerHTML="<span class='empty'>Microphone access was blocked, so nothing was run. Allow microphone access, then tap the mic and speak again — or type your command below.</span>";
+              toast("Microphone blocked — allow access, or type your command");
+            } else if(err==="no-speech"){
+              transcriptEl.innerHTML="<span class='empty'>I didn't hear anything, so nothing was run. Tap the mic and speak again.</span>";
+              toast("Nothing heard — tap the mic and speak again");
+            } else if(err==="aborted"){
+              transcriptEl.innerHTML="<span class='empty'>Listening stopped — nothing was run. Tap the mic when you are ready to speak.</span>";
+            } else if(err){
+              transcriptEl.innerHTML="<span class='empty'>Voice input stopped ("+err+"), so nothing was run. Tap the mic to try again, or type your command below.</span>";
+            } else {
+              transcriptEl.innerHTML="<span class='empty'>Listening ended with no command heard — nothing was run. Tap the mic and speak again.</span>";
+            }
+            setStatus("Ready — listening for your command", false);
+          };
+          try{ recognition.start(); }catch(e){
+            endListeningUI(); recognition=null;
+            transcriptEl.innerHTML="<span class='empty'>Voice input could not start, so nothing was run. Please type your command below.</span>";
+            setStatus("Ready — listening for your command", false);
+          }
         }
 
         function showResult(R){
@@ -673,11 +766,12 @@
             setTimeout(function(){ runReport(el.getAttribute("data-cmd")); }, reduced?0:350);
           });
         });
-        micBtn.addEventListener("click", function(){ runReport("fuel"); });
+        micBtn.addEventListener("click", startVoice);
         document.getElementById("cmdForm").addEventListener("submit", function(e){
           e.preventDefault();
           var v=document.getElementById("cmdInput").value.trim();
-          runReport(pickReport(v), v || null);
+          if(!v){ toast("Type a command first — nothing was sent to the agent"); document.getElementById("cmdInput").focus(); return; }
+          runReport(pickReport(v), v);
         });
 
         document.getElementById("anotherBtn").addEventListener("click", function(){
