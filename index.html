@@ -694,12 +694,46 @@
            forever on mobile, while on desktop the first short pause ended
            the session early and ran a report before the user had finished
            speaking. The session below restarts itself after every browser
-           stop and keeps every interim word it heard. */
-        var VS = { finalText:"", interimText:"", fatal:"", finishing:false, discard:false,
+           stop and keeps every interim word it heard.
+           Words are kept in three pieces: `committed` (finished browser
+           segments), `segFinal` and `segInterim` (the live segment). They
+           are joined with mergeText(), never plain concatenation — see why
+           there. */
+        var VS = { committed:"", segFinal:"", segInterim:"", fatal:"", finishing:false, discard:false,
                    startedAt:0, lastActivity:0, attempts:0, netErrors:0, clock:null, finishTimer:null };
         var MAX_LISTEN_MS = 120000;
 
-        function heardText(){ return (VS.finalText+" "+VS.interimText).replace(/\s+/g," ").trim(); }
+        /* Joins two transcript pieces without repeating words. This is the
+           fix for the "whichwhichwhich vehicleswhich vehicles are…"
+           staircase in the bug report: Android Chrome does not update one
+           result entry in place like desktop Chrome — every update ADDS an
+           entry holding the whole sentence so far ("which", "which
+           vehicles", "which vehicles are", …). Gluing the entries together
+           stacks every snapshot; the words also arrive with no leading
+           space, so they ran together. mergeText instead treats a piece
+           that restates what is already there as a replacement, drops a
+           piece that adds nothing, and merges on a shared word-boundary
+           overlap before falling back to a plain space join. */
+        function mergeText(acc, chunk){
+          acc=(acc||"").replace(/\s+/g," ").trim();
+          chunk=(chunk||"").replace(/\s+/g," ").trim();
+          if(!chunk) return acc;
+          if(!acc) return chunk;
+          var a=acc.toLowerCase(), c=chunk.toLowerCase();
+          if(c.indexOf(a)===0) return chunk;   /* chunk restates acc, then more */
+          if(a.indexOf(c)===0) return acc;     /* chunk already inside acc */
+          var max=Math.min(a.length, c.length);
+          for(var n=max; n>0; n--){
+            if(a.slice(a.length-n)!==c.slice(0,n)) continue;
+            var startOk = (a.length-n===0) || a.charAt(a.length-n-1)===" ";
+            var endOk = (n===c.length) || c.charAt(n)===" ";
+            if(startOk && endOk) return acc+chunk.slice(n);
+          }
+          return acc+" "+chunk;
+        }
+
+        function finalText(){ return mergeText(VS.committed, VS.segFinal); }
+        function heardText(){ return mergeText(finalText(), VS.segInterim); }
 
         function setListeningUI(on){
           listening=on;
@@ -713,8 +747,11 @@
         function stopClock(){ if(VS.clock){ clearInterval(VS.clock); VS.clock=null; } recTime.textContent=""; }
 
         function renderHeard(){
-          var f=VS.finalText.trim(), im=VS.interimText.trim();
-          if(!f && !im){ voiceMsg("Listening… speak now — take your time, pauses are fine. Tap Done when you finish."); return; }
+          var f=finalText(), full=heardText();
+          if(!full){ voiceMsg("Listening… speak now — take your time, pauses are fine. Tap Done when you finish."); return; }
+          /* The still-changing tail is whatever the interim piece added
+             beyond the settled text — shown faded, the rest solid. */
+          var im=full.slice(f.length).trim();
           transcriptEl.textContent="";
           var a=document.createElement("span"); a.textContent="“"+f+(f&&im?" ":"");
           var b=document.createElement("span"); b.className="interim"; b.textContent=im;
@@ -731,15 +768,19 @@
           r.onstart=function(){ VS.attempts=0; VS.lastActivity=Date.now(); };
           r.onresult=function(ev){
             VS.lastActivity=Date.now(); VS.attempts=0; VS.netErrors=0;
-            /* Rebuild from ALL results, not just resultIndex onwards, and
-               keep interim words too — they are all the user gets on some
-               phones, and they are exactly what was being thrown away. */
+            /* Rebuild this segment from ALL its results, interim words
+               included — they are all the user gets on some phones. Every
+               piece goes through mergeText: on Android the entries are
+               cumulative snapshots of the same sentence, so adding them
+               end-to-end repeats every phrase (the reported bug); merging
+               collapses each snapshot into the sentence it belongs to. */
             var finals="", interim="";
             for(var i=0;i<ev.results.length;i++){
-              if(ev.results[i].isFinal) finals+=ev.results[i][0].transcript;
-              else interim+=ev.results[i][0].transcript;
+              var t=ev.results[i][0].transcript;
+              if(ev.results[i].isFinal) finals=mergeText(finals, t);
+              else interim=mergeText(interim, t);
             }
-            VS.finalText=finals; VS.interimText=interim;
+            VS.segFinal=finals; VS.segInterim=interim;
             renderHeard();
           };
           r.onerror=function(ev){
@@ -753,6 +794,10 @@
           r.onend=function(){
             recognition=null;
             if(!listening) return;
+            /* This segment is over and the next one starts with an empty
+               result list — fold its words (interim included) into the
+               committed text first, or everything heard so far is lost. */
+            VS.committed=heardText(); VS.segFinal=""; VS.segInterim="";
             if(VS.finishing){ finishVoice(); return; }
             if(VS.fatal){ failVoice(VS.fatal); return; }
             if(Date.now()-VS.startedAt>MAX_LISTEN_MS){ VS.finishing=true; finishVoice(); return; }
@@ -780,7 +825,7 @@
             document.getElementById("cmdInput").focus();
             return;
           }
-          VS.finalText=""; VS.interimText=""; VS.fatal=""; VS.finishing=false; VS.discard=false;
+          VS.committed=""; VS.segFinal=""; VS.segInterim=""; VS.fatal=""; VS.finishing=false; VS.discard=false;
           VS.startedAt=Date.now(); VS.lastActivity=Date.now(); VS.attempts=0; VS.netErrors=0;
           if(VS.finishTimer){ clearTimeout(VS.finishTimer); VS.finishTimer=null; }
           setListeningUI(true);
