@@ -75,6 +75,15 @@
       .wave.live i{ background:var(--accent); }
       .mic-hint{ font-size:14px; color:var(--console-muted); margin-top:12px; }
       .mic-hint strong{ color:var(--console-ink); }
+      .voice-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
+      .voice-bar label{ font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--console-muted); }
+      .voice-bar select{ background:#101315; color:#fff; border:1px solid rgba(255,255,255,.16); border-radius:9px; padding:8px 10px; font:inherit; font-size:14px; max-width:100%; }
+      .voice-actions{ display:flex; gap:8px; margin-left:auto; }
+      .voice-actions[hidden]{ display:none; }
+      .voice-actions .btn{ padding:9px 14px; font-size:14px; }
+      .btn-stop{ background:transparent; border:1px solid rgba(255,255,255,.25); color:#dfe4de; }
+      .btn-stop:hover{ border-color:#f0836f; color:#fff; }
+      .transcript p .interim{ opacity:.55; }
 
       .transcript{ margin-top:20px; background:#101315; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; min-height:86px; }
       .transcript .who{ font-size:11.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--console-muted); display:flex; justify-content:space-between; gap:8px; }
@@ -213,6 +222,8 @@
         .wave{ width:100%; }
         .cmd-form{ flex-direction:column; }
         .cmd-form .btn{ width:100%; }
+        .voice-actions{ margin-left:0; width:100%; }
+        .voice-actions .btn{ flex:1; }
         .result-head .actions{ margin-left:0; width:100%; }
         .result-head .actions .btn{ flex:1; }
         /* fleet table stacks into cards */
@@ -276,11 +287,26 @@
               </button>
               <div class="wave" id="wave" aria-hidden="true"></div>
             </div>
-            <p class="mic-hint">Tap the mic, allow microphone access, then <strong>speak your command</strong> — nothing runs until you have finished speaking. Tap the mic again to stop. Or type your command below, or pick a sample command to run it straight away.</p>
+            <p class="mic-hint">Tap the mic, allow microphone access, then <strong>speak your command at your own pace</strong> — it keeps listening through pauses, and nothing runs while you are talking. When you finish, tap <strong>Done</strong> (or the mic again) — only then does the agent start. Or type your command below, or pick a sample command.</p>
+
+            <div class="voice-bar">
+              <label for="langSel">Voice language</label>
+              <select id="langSel">
+                <option value="en-US" selected>English (US)</option>
+                <option value="en-IN">English (India)</option>
+                <option value="ur-PK">Urdu — اردو</option>
+                <option value="hi-IN">Hindi — हिन्दी</option>
+                <option value="ar-AE">Arabic (UAE) — العربية</option>
+              </select>
+              <div class="voice-actions" id="voiceActions" hidden>
+                <button class="btn btn-accent" type="button" id="doneBtn">Done — send to agent</button>
+                <button class="btn btn-stop" type="button" id="cancelBtn">Cancel</button>
+              </div>
+            </div>
 
             <div class="transcript">
               <div class="who"><span>Your voice → text</span><span class="mono" id="recTime"></span></div>
-              <p id="transcriptText"><span class="empty">No command yet. Tap the mic and speak — the agent waits for your words before doing anything.</span></p>
+              <p id="transcriptText"><span class="empty">No command yet. Tap the mic and speak — your words appear here as you talk, and the agent acts only after you tap Done.</span></p>
             </div>
 
             <form class="cmd-form" id="cmdForm">
@@ -652,90 +678,201 @@
            Tapping the mic only STARTS listening. No step runs and no report
            is built until the browser returns a finished transcript of what
            the user actually said. */
-        var listening=false, recognition=null, voiceFinal="", voiceError="";
+        var listening=false, recognition=null;
         var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var langSel=document.getElementById("langSel"), voiceActions=document.getElementById("voiceActions");
+        if(navigator.language){ for(var li=0; li<langSel.options.length; li++){
+          if(langSel.options[li].value.toLowerCase()===navigator.language.toLowerCase()){ langSel.selectedIndex=li; break; } } }
 
-        function endListeningUI(){
-          listening=false;
-          micBtn.classList.remove("listening");
-          micBtn.setAttribute("aria-pressed","false");
-          micBtn.setAttribute("aria-label","Start voice command — tap, then speak");
-          waveStop();
+        /* Voice session state. `listening` stays true for the WHOLE session,
+           across the browser's own start/stop cycles, until the user taps
+           Done/Cancel or a fatal error ends it. This matters because Chrome —
+           desktop and Android alike — stops recognition at the first pause
+           (continuous mode included) and often delivers the words only as
+           *interim* results: the old code waited for a "final" result that
+           might never come, so the transcript sat on "Listening… speak now"
+           forever on mobile, while on desktop the first short pause ended
+           the session early and ran a report before the user had finished
+           speaking. The session below restarts itself after every browser
+           stop and keeps every interim word it heard. */
+        var VS = { finalText:"", interimText:"", fatal:"", finishing:false, discard:false,
+                   startedAt:0, lastActivity:0, attempts:0, netErrors:0, clock:null, finishTimer:null };
+        var MAX_LISTEN_MS = 120000;
+
+        function heardText(){ return (VS.finalText+" "+VS.interimText).replace(/\s+/g," ").trim(); }
+
+        function setListeningUI(on){
+          listening=on;
+          micBtn.classList.toggle("listening", on);
+          micBtn.setAttribute("aria-pressed", on?"true":"false");
+          micBtn.setAttribute("aria-label", on?"Done — send my command to the agent":"Start voice command — tap, then speak");
+          voiceActions.hidden=!on;
+          if(on){ waveStart(); } else { waveStop(); }
+        }
+        function voiceMsg(html){ transcriptEl.innerHTML="<span class='empty'>"+html+"</span>"; }
+        function stopClock(){ if(VS.clock){ clearInterval(VS.clock); VS.clock=null; } recTime.textContent=""; }
+
+        function renderHeard(){
+          var f=VS.finalText.trim(), im=VS.interimText.trim();
+          if(!f && !im){ voiceMsg("Listening… speak now — take your time, pauses are fine. Tap Done when you finish."); return; }
+          transcriptEl.textContent="";
+          var a=document.createElement("span"); a.textContent="“"+f+(f&&im?" ":"");
+          var b=document.createElement("span"); b.className="interim"; b.textContent=im;
+          var c=document.createElement("span"); c.textContent="”";
+          transcriptEl.appendChild(a); transcriptEl.appendChild(b); transcriptEl.appendChild(c);
+        }
+
+        function buildRecognition(){
+          var r=new SpeechRec();
+          r.lang=langSel.value||"en-US";
+          r.interimResults=true;
+          r.continuous=true;
+          r.maxAlternatives=1;
+          r.onstart=function(){ VS.attempts=0; VS.lastActivity=Date.now(); };
+          r.onresult=function(ev){
+            VS.lastActivity=Date.now(); VS.attempts=0; VS.netErrors=0;
+            /* Rebuild from ALL results, not just resultIndex onwards, and
+               keep interim words too — they are all the user gets on some
+               phones, and they are exactly what was being thrown away. */
+            var finals="", interim="";
+            for(var i=0;i<ev.results.length;i++){
+              if(ev.results[i].isFinal) finals+=ev.results[i][0].transcript;
+              else interim+=ev.results[i][0].transcript;
+            }
+            VS.finalText=finals; VS.interimText=interim;
+            renderHeard();
+          };
+          r.onerror=function(ev){
+            VS.lastActivity=Date.now();
+            var e=ev.error||"";
+            if(e==="not-allowed"||e==="service-not-allowed"||e==="audio-capture"){ VS.fatal=e; }
+            else if(e==="network"){ VS.netErrors++; if(VS.netErrors>=4) VS.fatal="network"; }
+            /* "no-speech" and "aborted" are NOT fatal: onend restarts the
+               session, so a pause never ends the user's turn. */
+          };
+          r.onend=function(){
+            recognition=null;
+            if(!listening) return;
+            if(VS.finishing){ finishVoice(); return; }
+            if(VS.fatal){ failVoice(VS.fatal); return; }
+            if(Date.now()-VS.startedAt>MAX_LISTEN_MS){ VS.finishing=true; finishVoice(); return; }
+            setStatus("Listening… speak now — tap Done when you finish", true);
+            setTimeout(function(){ if(listening && !VS.finishing && !recognition) startSegment(); }, 250);
+          };
+          return r;
+        }
+
+        function startSegment(){
+          if(!listening || VS.finishing) return;
+          VS.attempts++;
+          if(VS.attempts>8){ failVoice("start"); return; }
+          try{ recognition=buildRecognition(); VS.lastActivity=Date.now(); recognition.start(); }
+          catch(e){ recognition=null; setTimeout(startSegment, 400); }
         }
 
         function startVoice(){
           if(running) return;
-          if(listening){ if(recognition){ try{ recognition.stop(); }catch(e){} } return; }
+          if(listening){ requestFinish(false); return; }
           if(!SpeechRec){
-            transcriptEl.innerHTML="<span class='empty'>Voice input is not available in this browser, so nothing was run. Please type your command below, or tap a sample command.</span>";
+            voiceMsg("Voice input is not available in this browser, so nothing was run. Please type your command below, or tap a sample command.");
             setStatus("Ready — type a command or tap a sample", false);
             toast("Voice input is not available in this browser — type your command instead");
             document.getElementById("cmdInput").focus();
             return;
           }
-          voiceFinal=""; voiceError="";
-          try{ recognition=new SpeechRec(); }catch(e){
-            transcriptEl.innerHTML="<span class='empty'>Voice input could not start, so nothing was run. Please type your command below.</span>";
-            toast("Voice input could not start — type your command instead");
+          VS.finalText=""; VS.interimText=""; VS.fatal=""; VS.finishing=false; VS.discard=false;
+          VS.startedAt=Date.now(); VS.lastActivity=Date.now(); VS.attempts=0; VS.netErrors=0;
+          if(VS.finishTimer){ clearTimeout(VS.finishTimer); VS.finishTimer=null; }
+          setListeningUI(true);
+          setStatus("Listening… speak now — tap Done when you finish", true);
+          voiceMsg("Listening… speak now — take your time, pauses are fine. Tap Done when you finish.");
+          /* Elapsed-time clock + watchdog. If the browser's recognizer goes
+             silent — no result and no end event, a known hang on some
+             Android browsers that left this page stuck on "speak now" —
+             stop the segment; onend then restarts listening instead of
+             hanging. The session also finishes itself at the time cap. */
+          var t0=Date.now();
+          VS.clock=setInterval(function(){
+            if(!listening){ stopClock(); return; }
+            var s=Math.floor((Date.now()-t0)/1000);
+            recTime.textContent="● REC "+Math.floor(s/60)+":"+(s%60<10?"0":"")+s%60+" — listening";
+            if(!VS.finishing && recognition && Date.now()-VS.lastActivity>15000){
+              VS.lastActivity=Date.now();
+              try{ recognition.stop(); }catch(e){}
+            }
+            if(Date.now()-VS.startedAt>MAX_LISTEN_MS) requestFinish(false);
+          }, 500);
+          startSegment();
+        }
+
+        /* The user — and only the user — ends the speaking turn: tapping
+           Done, tapping the mic again, or the session time cap. */
+        function requestFinish(discard){
+          if(!listening || VS.finishing) return;
+          VS.finishing=true; VS.discard=!!discard;
+          setStatus("Got it — handing your command to the agent…", true);
+          if(recognition){ try{ recognition.stop(); }catch(e){} }
+          /* Some Android browsers never fire onend after stop() — that hang
+             is what froze the page on "Listening… speak now". If onend has
+             not finished the session shortly, finish it here with whatever
+             words were heard, interim words included. */
+          if(VS.finishTimer) clearTimeout(VS.finishTimer);
+          VS.finishTimer=setTimeout(function(){ if(listening && VS.finishing) finishVoice(); }, 900);
+        }
+
+        function finishVoice(){
+          if(!listening) return;
+          var text=heardText(), discard=VS.discard;
+          VS.finishing=false; VS.discard=false; VS.fatal="";
+          if(VS.finishTimer){ clearTimeout(VS.finishTimer); VS.finishTimer=null; }
+          recognition=null;
+          setListeningUI(false); stopClock();
+          if(discard){
+            voiceMsg("Listening cancelled — nothing was run. Tap the mic when you are ready to speak.");
+            setStatus("Ready — listening for your command", false);
             return;
           }
-          recognition.lang="en-US";
-          recognition.interimResults=true;
-          recognition.continuous=false;
-          recognition.maxAlternatives=1;
-
-          listening=true;
-          micBtn.classList.add("listening");
-          micBtn.setAttribute("aria-pressed","true");
-          micBtn.setAttribute("aria-label","Stop listening");
-          waveStart();
-          setStatus("Listening… speak now", true);
-          recTime.textContent="● REC — listening";
-          transcriptEl.innerHTML="<span class='empty'>Listening… speak now. The agent will act only after you finish speaking.</span>";
-
-          recognition.onresult=function(ev){
-            var interim="", finalTxt="";
-            for(var i=ev.resultIndex;i<ev.results.length;i++){
-              if(ev.results[i].isFinal) finalTxt+=ev.results[i][0].transcript;
-              else interim+=ev.results[i][0].transcript;
-            }
-            var heard=(finalTxt||interim).trim();
-            if(heard) transcriptEl.textContent="“"+heard+"”";
-            if(finalTxt.trim()) voiceFinal=finalTxt.trim();
-          };
-          recognition.onerror=function(ev){
-            voiceError=ev.error||"error";
-          };
-          recognition.onend=function(){
-            var heardFinal=voiceFinal, err=voiceError;
-            endListeningUI();
-            recognition=null;
-            if(heardFinal){
-              recTime.textContent="";
-              runReport(pickReport(heardFinal), heardFinal, true);
-              return;
-            }
-            recTime.textContent="";
-            if(err==="not-allowed" || err==="service-not-allowed"){
-              transcriptEl.innerHTML="<span class='empty'>Microphone access was blocked, so nothing was run. Allow microphone access, then tap the mic and speak again — or type your command below.</span>";
-              toast("Microphone blocked — allow access, or type your command");
-            } else if(err==="no-speech"){
-              transcriptEl.innerHTML="<span class='empty'>I didn't hear anything, so nothing was run. Tap the mic and speak again.</span>";
-              toast("Nothing heard — tap the mic and speak again");
-            } else if(err==="aborted"){
-              transcriptEl.innerHTML="<span class='empty'>Listening stopped — nothing was run. Tap the mic when you are ready to speak.</span>";
-            } else if(err){
-              transcriptEl.innerHTML="<span class='empty'>Voice input stopped ("+err+"), so nothing was run. Tap the mic to try again, or type your command below.</span>";
-            } else {
-              transcriptEl.innerHTML="<span class='empty'>Listening ended with no command heard — nothing was run. Tap the mic and speak again.</span>";
-            }
+          if(!text){
+            voiceMsg("I didn't catch any words, so nothing was run. Tap the mic and speak again — or type your command below.");
+            toast("Nothing heard — tap the mic and speak again");
             setStatus("Ready — listening for your command", false);
-          };
-          try{ recognition.start(); }catch(e){
-            endListeningUI(); recognition=null;
-            transcriptEl.innerHTML="<span class='empty'>Voice input could not start, so nothing was run. Please type your command below.</span>";
-            setStatus("Ready — listening for your command", false);
+            return;
           }
+          var key=pickReport(text);
+          if(!key){
+            /* Never silently swap the user's words for a preset demo job —
+               that is what made it look like the demo "ran by itself". Say
+               what was heard and let the user pick the job instead. */
+            transcriptEl.textContent="";
+            var q=document.createElement("span"); q.textContent="“"+text+"”";
+            var g=document.createElement("span"); g.className="empty";
+            g.textContent="Heard you — but that doesn't match one of this demo's jobs yet, so nothing was run. Say or tap one of: fuel report · service due list · driver roster · insurance & registration renewals.";
+            transcriptEl.appendChild(q); transcriptEl.appendChild(document.createElement("br")); transcriptEl.appendChild(g);
+            setStatus("Ready — pick a job below, or speak again", false);
+            toast("Heard you — tap one of the sample commands below to run it");
+            return;
+          }
+          runReport(key, text, true);
+        }
+
+        function failVoice(err){
+          if(VS.finishTimer){ clearTimeout(VS.finishTimer); VS.finishTimer=null; }
+          recognition=null; VS.finishing=false; VS.discard=false; VS.fatal="";
+          setListeningUI(false); stopClock();
+          if(err==="not-allowed" || err==="service-not-allowed"){
+            voiceMsg("Microphone access was blocked, so nothing was run. Allow microphone access for this site, then tap the mic and speak again — or type your command below.");
+            toast("Microphone blocked — allow access, or type your command");
+          } else if(err==="audio-capture"){
+            voiceMsg("No microphone was found, so nothing was run. Check the microphone, or type your command below.");
+            toast("No microphone found — type your command instead");
+          } else if(err==="network"){
+            voiceMsg("The voice service lost its connection, so listening stopped and nothing was run. Check the internet connection and tap the mic again — or type your command below.");
+            toast("Voice service connection lost — try again, or type your command");
+          } else {
+            voiceMsg("Voice input could not start, so nothing was run. Tap the mic to try again, or type your command below.");
+            toast("Voice input could not start — type your command instead");
+          }
+          setStatus("Ready — listening for your command", false);
         }
 
         function showResult(R){
@@ -752,26 +889,38 @@
           resultEl.scrollIntoView({behavior: reduced?"auto":"smooth", block:"start"});
         }
 
+        /* Returns the job a command asks for, or null when nothing matches —
+           an unmatched command must never be silently swapped for a preset
+           demo report. Keywords cover English plus the Urdu/Hindi words and
+           scripts the voice languages above can return. */
         function pickReport(text){
           var s=(text||"").toLowerCase();
-          if(/service|maintenance|due|workshop/.test(s)) return "maintenance";
-          if(/roster|duty|driver|shift/.test(s)) return "roster";
-          if(/insurance|registration|renewal|expiry/.test(s)) return "insurance";
-          return "fuel";
+          if(/service|maintenance|due|workshop|repair|سروس|सर्विस|मरम्मत/.test(s)) return "maintenance";
+          if(/roster|duty|driver|shift|schedule|ڈرائیور|ड्राइवर|ड्यूटी|रोस्टर/.test(s)) return "roster";
+          if(/insurance|registration|renewal|renew|expiry|expire|licen[cs]e|انشورنس|رجسٹریشن|बीमा|इंश्योरेंस|रजिस्ट्रेशन/.test(s)) return "insurance";
+          if(/fuel|petrol|diesel|فیول|پٹرول|फ्यूल|पेट्रोल|डीजल|डीज़ल/.test(s)) return "fuel";
+          if(/report|رپورٹ|रिपोर्ट/.test(s)) return "fuel";
+          return null;
         }
 
         document.querySelectorAll("[data-cmd]").forEach(function(el){
           el.addEventListener("click", function(){
+            if(listening){ toast("You are still speaking — tap Done to send your voice command, or Cancel to use this sample instead"); return; }
             document.getElementById("console").scrollIntoView({behavior: reduced?"auto":"smooth", block:"start"});
             setTimeout(function(){ runReport(el.getAttribute("data-cmd")); }, reduced?0:350);
           });
         });
         micBtn.addEventListener("click", startVoice);
+        document.getElementById("doneBtn").addEventListener("click", function(){ requestFinish(false); });
+        document.getElementById("cancelBtn").addEventListener("click", function(){ requestFinish(true); });
         document.getElementById("cmdForm").addEventListener("submit", function(e){
           e.preventDefault();
           var v=document.getElementById("cmdInput").value.trim();
           if(!v){ toast("Type a command first — nothing was sent to the agent"); document.getElementById("cmdInput").focus(); return; }
-          runReport(pickReport(v), v);
+          if(listening){ toast("You are still speaking — tap Done to send your voice command, or Cancel first"); return; }
+          var key=pickReport(v);
+          if(!key){ toast("That doesn't match a demo job — try “fuel report”, “service due”, “driver roster” or “renewals”, or tap a sample command"); return; }
+          runReport(key, v);
         });
 
         document.getElementById("anotherBtn").addEventListener("click", function(){
