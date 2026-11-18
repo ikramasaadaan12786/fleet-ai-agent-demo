@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Fleet AI Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2.25rem; }
+      * { box-sizing: border-box; }
+      :root{
+        --bg:#f3f4f2; --surface:#ffffff; --surface2:#eceee9; --ink:#171a17; --muted:#5c635c;
+        --line:#dde0d9; --accent:#c2570a; --accent-ink:#a34a08; --accent-soft:#fbeedd;
+        --green:#1d7a4f; --green-soft:#e2f2e8; --red:#b3372c; --red-soft:#fbe9e6;
+        --amber:#9a6a00; --amber-soft:#faf0d2; --blue:#2456a6; --blue-soft:#e4ecfa;
+        --console:#14171a; --console2:#1d2126; --console-ink:#eef1ee; --console-muted:#9aa39c;
+        --shadow:0 1px 2px rgba(20,25,20,.06),0 8px 24px rgba(20,25,20,.06);
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark){
+        :root{
+          --bg:#0f1110; --surface:#171a18; --surface2:#1f2320; --ink:#eceee9; --muted:#9aa39a;
+          --line:#2a2f2a; --accent:#f08a3c; --accent-ink:#f5a05c; --accent-soft:#33220f;
+          --green:#4cc084; --green-soft:#123324; --red:#f0836f; --red-soft:#3a1d18;
+          --amber:#e8bc55; --amber-soft:#33290d; --blue:#7aa5e8; --blue-soft:#16283f;
+          --console:#0b0d0e; --console2:#15181a; --console-ink:#eef1ee; --console-muted:#8b948c;
+          --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+        }
+      }
+      html{ scroll-behavior:smooth; }
+      body{ margin:0; background:var(--bg); color:var(--ink); font-family:"Manrope",system-ui,sans-serif; font-size:16px; line-height:1.55; }
+      h1,h2,h3{ font-family:"Archivo",sans-serif; letter-spacing:-.01em; margin:0; }
+      .mono{ font-family:"IBM Plex Mono",monospace; }
+      .wrap{ max-width:1180px; margin:0 auto; padding:0 20px 64px; }
+
+      /* ---------- Intro ---------- */
+      .intro{ padding:34px 0 22px; display:grid; grid-template-columns:1.35fr .85fr; gap:28px; align-items:end; }
+      .intro h1{ font-size:clamp(30px,4.6vw,46px); line-height:1.08; font-weight:800; max-width:16ch; }
+      .intro h1 em{ font-style:normal; color:var(--accent); }
+      .intro p.lede{ margin:14px 0 0; font-size:17px; color:var(--muted); max-width:56ch; }
+      .intro-side{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow); }
+      .intro-side h3{ font-size:13px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-family:"Manrope"; font-weight:800; margin-bottom:10px; }
+      .intro-side ul{ margin:0; padding:0; list-style:none; display:grid; gap:9px; font-size:14.5px; }
+      .intro-side li{ display:flex; gap:9px; align-items:flex-start; }
+      .intro-side svg{ flex:none; margin-top:3px; color:var(--green); }
+      .demo-tag{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--line); padding:5px 11px; border-radius:999px; margin-bottom:14px; }
+      .demo-tag .dot{ width:8px; height:8px; border-radius:50%; background:var(--accent); }
+
+      /* ---------- Console ---------- */
+      .console{ background:var(--console); color:var(--console-ink); border-radius:18px; overflow:hidden; box-shadow:0 18px 44px rgba(10,12,10,.28); }
+      .console-head{ display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+      .console-head .lights{ display:flex; gap:7px; }
+      .console-head .lights i{ width:11px; height:11px; border-radius:50%; display:block; }
+      .console-head .t{ font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--console-muted); }
+      .status-pill{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:700; background:var(--console2); border:1px solid rgba(255,255,255,.09); padding:6px 12px; border-radius:999px; }
+      .status-pill .dot{ width:9px; height:9px; border-radius:50%; background:#3ecf7a; }
+      .status-pill.busy .dot{ background:#f5b83c; animation:pulse 1s infinite; }
+      @keyframes pulse{ 50%{ opacity:.35; } }
+      .console-grid{ display:grid; grid-template-columns:1.15fr .85fr; }
+      .console-main{ padding:22px; border-right:1px solid rgba(255,255,255,.08); }
+      .console-side{ padding:22px; background:var(--console2); }
+      .c-label{ font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--console-muted); margin:0 0 12px; }
+
+      .mic-row{ display:flex; gap:16px; align-items:center; }
+      .mic-btn{ width:76px; height:76px; flex:none; border-radius:50%; border:2px solid rgba(255,255,255,.16); background:#23282d; color:#fff; cursor:pointer; display:grid; place-items:center; transition:transform .15s, background .2s, border-color .2s; }
+      .mic-btn:hover{ transform:scale(1.04); border-color:var(--accent); }
+      .mic-btn.listening{ background:var(--accent); border-color:var(--accent); animation:ring 1.4s infinite; }
+      @keyframes ring{ 0%{ box-shadow:0 0 0 0 rgba(240,138,60,.45);} 100%{ box-shadow:0 0 0 18px rgba(240,138,60,0);} }
+      .wave{ display:flex; align-items:center; gap:3px; height:44px; flex:1; }
+      .wave i{ width:4px; border-radius:2px; background:#4a5157; height:8px; transition:height .18s, background .2s; }
+      .wave.live i{ background:var(--accent); }
+      .mic-hint{ font-size:14px; color:var(--console-muted); margin-top:12px; }
+      .mic-hint strong{ color:var(--console-ink); }
+
+      .transcript{ margin-top:20px; background:#101315; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px; min-height:86px; }
+      .transcript .who{ font-size:11.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--console-muted); display:flex; justify-content:space-between; gap:8px; }
+      .transcript p{ margin:8px 0 0; font-size:17px; line-height:1.45; }
+      .transcript p .caret{ display:inline-block; width:9px; height:18px; background:var(--accent); vertical-align:-3px; margin-left:2px; animation:pulse .8s infinite; }
+      .transcript .empty{ color:var(--console-muted); font-size:15px; }
+
+      .cmd-form{ display:flex; gap:10px; margin-top:14px; }
+      .cmd-form input{ flex:1; background:#101315; border:1px solid rgba(255,255,255,.14); border-radius:10px; color:#fff; padding:10px 14px; font:inherit; font-size:15px; min-width:0; }
+      .cmd-form input::placeholder{ color:#6d756e; }
+      .btn{ border:0; border-radius:10px; font:inherit; font-weight:800; cursor:pointer; padding:10px 18px; display:inline-flex; align-items:center; gap:8px; justify-content:center; }
+      .btn-accent{ background:var(--accent); color:#fff; }
+      .btn-accent:hover{ filter:brightness(1.08); }
+      .btn-ghost{ background:transparent; border:1px solid var(--line); color:var(--ink); }
+      .btn-green{ background:var(--green); color:#fff; }
+      .btn-green:hover{ filter:brightness(1.07); }
+      .btn[disabled]{ opacity:.55; cursor:wait; }
+
+      .chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+      .chip{ background:#23282d; color:#dfe4de; border:1px solid rgba(255,255,255,.1); border-radius:999px; padding:9px 14px; font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; text-align:left; }
+      .chip:hover{ border-color:var(--accent); color:#fff; }
+
+      .steps{ list-style:none; margin:20px 0 0; padding:0; display:grid; gap:0; }
+      .steps li{ display:flex; gap:12px; padding:9px 0; border-top:1px dashed rgba(255,255,255,.09); align-items:flex-start; opacity:.38; transition:opacity .3s; }
+      .steps li.active,.steps li.done{ opacity:1; }
+      .steps .ic{ width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid rgba(255,255,255,.25); display:grid; place-items:center; font-size:12px; font-family:"IBM Plex Mono",monospace; margin-top:1px; }
+      .steps li.active .ic{ border-color:var(--accent); color:var(--accent); }
+      .steps li.done .ic{ background:var(--green); border-color:var(--green); color:#fff; }
+      .steps .st{ font-weight:700; font-size:15px; }
+      .steps .sd{ font-size:13.5px; color:var(--console-muted); font-family:"IBM Plex Mono",monospace; }
+      .steps .spin{ width:14px; height:14px; border:2px solid rgba(240,138,60,.3); border-top-color:var(--accent); border-radius:50%; animation:rot .7s linear infinite; }
+      @keyframes rot{ to{ transform:rotate(360deg);} }
+
+      .file-list{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+      .file-list li{ display:flex; align-items:center; gap:11px; background:#101315; border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:10px 12px; font-size:14px; transition:border-color .3s, background .3s; }
+      .file-list li.open{ border-color:var(--accent); background:#1d1710; }
+      .file-list .fi{ width:34px; height:34px; flex:none; border-radius:8px; display:grid; place-items:center; background:#1e3a2a; color:#5fd598; font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600; }
+      .file-list .fi.pdf{ background:#3a2320; color:#f0937f; }
+      .file-list .fi.folder{ background:#2c2a1c; color:#e8bc55; }
+      .file-list .fn{ font-weight:700; }
+      .file-list .fm{ font-size:12px; color:var(--console-muted); font-family:"IBM Plex Mono",monospace; }
+      .file-list .open-badge{ margin-left:auto; font-size:11px; font-weight:800; letter-spacing:.06em; color:var(--accent); text-transform:uppercase; display:none; }
+      .file-list li.open .open-badge{ display:block; }
+      .perm-note{ margin-top:14px; font-size:13px; color:var(--console-muted); display:flex; gap:8px; }
+      .perm-note svg{ flex:none; margin-top:2px; }
+
+      /* ---------- Result ---------- */
+      .result{ margin-top:22px; background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; display:none; }
+      .result.show{ display:block; }
+      .result-head{ display:flex; align-items:center; gap:14px; padding:18px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+      .result-head .ok{ width:40px; height:40px; border-radius:50%; background:var(--green-soft); color:var(--green); display:grid; place-items:center; flex:none; }
+      .result-head h2{ font-size:20px; }
+      .result-head p{ margin:2px 0 0; color:var(--muted); font-size:14px; }
+      .result-head .actions{ margin-left:auto; display:flex; gap:10px; flex-wrap:wrap; }
+      .result-stats{ display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid var(--line); }
+      .result-stats div{ padding:14px 20px; border-right:1px solid var(--line); }
+      .result-stats div:last-child{ border-right:0; }
+      .result-stats .v{ font-family:"Archivo"; font-weight:800; font-size:22px; }
+      .result-stats .k{ font-size:12.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+      .table-scroll{ overflow-x:auto; }
+      table{ border-collapse:collapse; width:100%; font-size:14.5px; }
+      th{ text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:11px 20px; border-bottom:1px solid var(--line); white-space:nowrap; }
+      td{ padding:11px 20px; border-bottom:1px solid var(--line); white-space:nowrap; }
+      tr:last-child td{ border-bottom:0; }
+      td.num,th.num{ text-align:right; font-family:"IBM Plex Mono",monospace; font-size:13.5px; }
+      tr.total td{ font-weight:800; background:var(--surface2); }
+
+      /* ---------- Sections ---------- */
+      section{ margin-top:52px; }
+      .sec-head{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+      .sec-head h2{ font-size:clamp(22px,3vw,28px); font-weight:800; }
+      .sec-head p{ margin:0; color:var(--muted); font-size:15px; }
+      .stats-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+      .stat-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow); }
+      .stat-card .v{ font-family:"Archivo"; font-size:32px; font-weight:800; line-height:1.1; }
+      .stat-card .k{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+      .stat-card .d{ font-size:13.5px; margin-top:8px; color:var(--muted); }
+      .stat-card .d b{ color:var(--green); }
+
+      .panel{ background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); overflow:hidden; }
+      .filters{ display:flex; gap:8px; padding:14px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+      .fbtn{ border:1px solid var(--line); background:var(--surface2); color:var(--ink); border-radius:999px; padding:8px 15px; font:inherit; font-size:13.5px; font-weight:700; cursor:pointer; }
+      .fbtn.on{ background:var(--ink); color:var(--bg); border-color:var(--ink); }
+      .badge{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:800; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+      .badge::before{ content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+      .b-green{ background:var(--green-soft); color:var(--green); }
+      .b-amber{ background:var(--amber-soft); color:var(--amber); }
+      .b-red{ background:var(--red-soft); color:var(--red); }
+      .b-blue{ background:var(--blue-soft); color:var(--blue); }
+      .b-grey{ background:var(--surface2); color:var(--muted); }
+      .fuelbar{ width:86px; height:8px; background:var(--surface2); border-radius:99px; overflow:hidden; display:inline-block; vertical-align:middle; }
+      .fuelbar i{ display:block; height:100%; background:var(--green); border-radius:99px; }
+      .fuelbar.low i{ background:var(--red); }
+      .fuelbar.mid i{ background:var(--amber); }
+
+      .caps{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+      .cap{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); }
+      .cap .ic{ width:42px; height:42px; border-radius:11px; background:var(--accent-soft); color:var(--accent-ink); display:grid; place-items:center; margin-bottom:12px; }
+      .cap h3{ font-size:17px; margin-bottom:6px; }
+      .cap p{ margin:0; font-size:14.5px; color:var(--muted); }
+      .cap .try{ margin-top:12px; font-size:13.5px; font-weight:800; color:var(--accent-ink); background:none; border:0; cursor:pointer; padding:6px 0; font-family:inherit; text-align:left; }
+      .cap .try:hover{ text-decoration:underline; }
+
+      .rules{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+      .rule-box{ border-radius:14px; padding:20px; border:1px solid var(--line); }
+      .rule-box.yes{ background:var(--green-soft); }
+      .rule-box.no{ background:var(--red-soft); }
+      .rule-box h3{ font-size:16px; display:flex; align-items:center; gap:9px; margin-bottom:12px; }
+      .rule-box ul{ margin:0; padding:0; list-style:none; display:grid; gap:9px; font-size:14.5px; }
+      .rule-box li{ display:flex; gap:9px; align-items:flex-start; }
+      .rule-box li svg{ flex:none; margin-top:3px; }
+
+      .how{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; counter-reset:step; }
+      .how .step{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); }
+      .how .n{ font-family:"IBM Plex Mono",monospace; font-size:13px; font-weight:600; color:var(--accent-ink); background:var(--accent-soft); width:32px; height:32px; border-radius:50%; display:grid; place-items:center; margin-bottom:12px; }
+      .how h3{ font-size:16px; margin-bottom:6px; }
+      .how p{ margin:0; font-size:14px; color:var(--muted); }
+
+      footer{ margin-top:56px; border-top:1px solid var(--line); padding-top:20px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; color:var(--muted); font-size:13.5px; }
+      .toast{ position:fixed; left:50%; bottom:22px; transform:translate(-50%,80px); background:var(--ink); color:var(--bg); padding:12px 20px; border-radius:12px; font-weight:700; font-size:14.5px; box-shadow:0 12px 32px rgba(0,0,0,.3); transition:transform .35s; z-index:50; max-width:92vw; text-align:center; }
+      .toast.show{ transform:translate(-50%,0); }
+
+      @media (max-width:900px){
+        .intro{ grid-template-columns:1fr; }
+        .console-grid{ grid-template-columns:1fr; }
+        .console-main{ border-right:0; border-bottom:1px solid rgba(255,255,255,.08); }
+        .stats-row{ grid-template-columns:1fr 1fr; }
+        .caps{ grid-template-columns:1fr 1fr; }
+        .how{ grid-template-columns:1fr 1fr; }
+        .result-stats{ grid-template-columns:1fr 1fr; }
+        .result-stats div{ border-bottom:1px solid var(--line); }
+      }
+      @media (max-width:620px){
+        .caps,.rules,.how{ grid-template-columns:1fr; }
+        .mic-row{ flex-direction:column; align-items:flex-start; }
+        .wave{ width:100%; }
+        .cmd-form{ flex-direction:column; }
+        .cmd-form .btn{ width:100%; }
+        .result-head .actions{ margin-left:0; width:100%; }
+        .result-head .actions .btn{ flex:1; }
+        /* fleet table stacks into cards */
+        .fleet-table thead{ display:none; }
+        .fleet-table,.fleet-table tbody,.fleet-table tr,.fleet-table td{ display:block; width:100%; }
+        .fleet-table tr{ padding:10px 4px; border-bottom:1px solid var(--line); }
+        .fleet-table td{ border:0; padding:5px 16px; white-space:normal; display:flex; justify-content:space-between; align-items:center; gap:14px; text-align:right; }
+        .fleet-table td::before{ content:attr(data-label); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); text-align:left; }
+        .fleet-table td.num{ text-align:right; }
+        /* result table stacks the same way */
+        #resultTable thead{ display:none; }
+        #resultTable,#resultTable tbody,#resultTable tr,#resultTable td{ display:block; width:100%; }
+        #resultTable tr{ padding:10px 4px; border-bottom:1px solid var(--line); }
+        #resultTable td{ border:0; padding:5px 16px; white-space:normal; display:flex; justify-content:space-between; align-items:center; gap:14px; text-align:right; }
+        #resultTable td::before{ content:attr(data-label); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); text-align:left; }
+        #resultTable td:first-child{ text-align:right; font-weight:700; }
+        .result-stats .v{ font-size:19px; white-space:nowrap; }
+        .result-stats div{ padding:12px 14px; }
+      }
+      @media (prefers-reduced-motion: reduce){
+        *{ animation:none !important; transition:none !important; }
+        html{ scroll-behavior:auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+
+      <!-- ===== Intro ===== -->
+      <div class="intro">
+        <div>
+          <span class="demo-tag"><span class="dot"></span> Interactive prototype · Client demo</span>
+          <h1>Just say it — the fleet work <em>gets done.</em></h1>
+          <p class="lede">Fleet AI Agent installs on your laptop, reads your fleet files, and turns a single voice note into reports, rosters and reminders — with Excel export. You can send that voice note from your phone, from anywhere. Try the live demo below.</p>
+        </div>
+        <div class="intro-side">
+          <h3>What this demo does</h3>
+          <ul>
+            <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Voice command → watch the agent's steps run live</li>
+            <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> A real report table is generated</li>
+            <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> The Excel file actually downloads — press the button and see</li>
+            <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Fleet dashboard with sample data</li>
+            <li><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Opens from one link — any phone, tablet or computer, from anywhere. Nothing to install to try it</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===== Agent console ===== -->
+      <div class="console" id="console">
+        <div class="console-head">
+          <span class="lights"><i style="background:#e2604f"></i><i style="background:#e8b13c"></i><i style="background:#3ecf7a"></i></span>
+          <span class="t">Fleet AI Agent — installed on this laptop</span>
+          <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Ready — listening for your command</span></span>
+        </div>
+        <div class="console-grid">
+          <div class="console-main">
+            <p class="c-label">1 · Give a voice command</p>
+            <div class="mic-row">
+              <button class="mic-btn" id="micBtn" aria-label="Play a voice command">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+              </button>
+              <div class="wave" id="wave" aria-hidden="true"></div>
+            </div>
+            <p class="mic-hint">Tap the mic or pick a <strong>sample command</strong> below. You can also type your command — send it from anywhere, the agent on the laptop does the rest.</p>
+
+            <div class="transcript">
+              <div class="who"><span>Your voice → text</span><span class="mono" id="recTime"></span></div>
+              <p id="transcriptText"><span class="empty">No command yet. Tap the mic — the agent listens, understands, and gets to work.</span></p>
+            </div>
+
+            <form class="cmd-form" id="cmdForm">
+              <input id="cmdInput" type="text" placeholder='Type here, e.g. "Make the November fuel report"' autocomplete="off" />
+              <button class="btn btn-accent" type="submit" id="sendBtn">Send to agent</button>
+            </form>
+
+            <div class="chips" id="chips">
+              <button class="chip" data-cmd="fuel">“Open the fuel file, make the November fuel report and export it to Excel”</button>
+              <button class="chip" data-cmd="maintenance">“Which vehicles are due for service this week? Make a list”</button>
+              <button class="chip" data-cmd="roster">“Make next week's driver duty roster”</button>
+              <button class="chip" data-cmd="insurance">“Show me the vehicles with insurance or registration renewals coming up”</button>
+            </div>
+
+            <p class="c-label" style="margin-top:26px;">2 · The agent at work</p>
+            <ol class="steps" id="steps">
+              <li data-step><span class="ic">1</span><div><div class="st">Understanding your voice</div><div class="sd">Converting speech to text and identifying the task</div></div></li>
+              <li data-step><span class="ic">2</span><div><div class="st">Opening the file</div><div class="sd" data-file-line>Picking the right file from the laptop's fleet files</div></div></li>
+              <li data-step><span class="ic">3</span><div><div class="st">Reading &amp; adding up the data</div><div class="sd" data-read-line>Reading rows, calculating totals, spotting gaps</div></div></li>
+              <li data-step><span class="ic">4</span><div><div class="st">Building the report</div><div class="sd">Preparing a clean table + summary</div></div></li>
+              <li data-step><span class="ic">5</span><div><div class="st">Excel export</div><div class="sd">Excel-ready file prepared for download</div></div></li>
+            </ol>
+          </div>
+
+          <div class="console-side">
+            <p class="c-label">What the agent can access — files on this laptop</p>
+            <ul class="file-list" id="fileList">
+              <li data-file="fuel"><span class="fi">XLS</span><div><div class="fn">fuel_log_2026.xlsx</div><div class="fm">1,248 rows · fuel record for every vehicle</div></div><span class="open-badge">Open</span></li>
+              <li data-file="vehicles"><span class="fi">XLS</span><div><div class="fn">vehicle_master.xlsx</div><div class="fm">48 vehicles · model, plate, mileage</div></div><span class="open-badge">Open</span></li>
+              <li data-file="maintenance"><span class="fi">XLS</span><div><div class="fn">maintenance_records.xlsx</div><div class="fm">Service history + next due dates</div></div><span class="open-badge">Open</span></li>
+              <li data-file="roster"><span class="fi">XLS</span><div><div class="fn">driver_roster.xlsx</div><div class="fm">32 drivers · shifts and routes</div></div><span class="open-badge">Open</span></li>
+              <li data-file="insurance"><span class="fi pdf">PDF</span><div><div class="fn">insurance_policies.pdf</div><div class="fm">Renewal dates · 48 policies</div></div><span class="open-badge">Open</span></li>
+              <li data-file="trips"><span class="fi folder">DIR</span><div><div class="fn">trip_sheets/</div><div class="fm">Daily trip sheets · Nov 2026</div></div><span class="open-badge">Open</span></li>
+            </ul>
+            <div class="perm-note">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>The agent only reads the folders you allow. It always asks you before deleting a file or sending anything to anyone.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Result ===== -->
+      <div class="result" id="result" aria-live="polite">
+        <div class="result-head">
+          <span class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div>
+            <h2 id="resultTitle">Your report is ready</h2>
+            <p id="resultSub"></p>
+          </div>
+          <div class="actions">
+            <button class="btn btn-green" id="downloadBtn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              Download Excel
+            </button>
+            <button class="btn btn-ghost" id="anotherBtn">Give another command</button>
+          </div>
+        </div>
+        <div class="result-stats" id="resultStats"></div>
+        <div class="table-scroll"><table id="resultTable"></table></div>
+      </div>
+
+      <!-- ===== Fleet snapshot ===== -->
+      <section>
+        <div class="sec-head">
+          <h2>Your fleet today</h2>
+          <p>The agent builds this snapshot from the same files — sample data for the demo.</p>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card"><div class="v">48</div><div class="k">Total vehicles</div><div class="d"><b>41</b> on the road · 4 in the workshop · 3 idle</div></div>
+          <div class="stat-card"><div class="v">AED 86,420</div><div class="k">Fuel this month</div><div class="d">Down <b>6.2%</b> vs last month — the agent flagged 3 high-spend vehicles</div></div>
+          <div class="stat-card"><div class="v">6</div><div class="k">Services due this month</div><div class="d">2 vehicles are <b style="color:var(--red)">overdue</b> — the agent has already sent reminders</div></div>
+          <div class="stat-card"><div class="v">3</div><div class="k">Renewals in 30 days</div><div class="d">2 insurance + 1 registration — the agent is tracking the dates</div></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="panel">
+          <div class="filters" id="fleetFilters">
+            <button class="fbtn on" data-f="all">All vehicles</button>
+            <button class="fbtn" data-f="trip">On the road</button>
+            <button class="fbtn" data-f="idle">Idle</button>
+            <button class="fbtn" data-f="workshop">In workshop</button>
+            <button class="fbtn" data-f="due">Service due</button>
+          </div>
+          <div class="table-scroll">
+            <table class="fleet-table">
+              <thead><tr><th>Vehicle</th><th>Driver</th><th>Status</th><th>Fuel</th><th class="num">Mileage (km)</th><th>Next service</th></tr></thead>
+              <tbody id="fleetBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Capabilities ===== -->
+      <section>
+        <div class="sec-head">
+          <h2>Every fleet job, on one voice command</h2>
+          <p>Work that takes hours by hand today — tap “Try it” on any card and the agent runs that job in the console above.</p>
+        </div>
+        <div class="caps">
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12"/><path d="M4 9h10"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0V9.8a2 2 0 0 0-.6-1.4L18 5"/></svg></span>
+            <h3>Fuel reports</h3>
+            <p>Monthly spend from the fuel log, cost per km, and which vehicle is burning the most fuel — worked out automatically.</p>
+            <button class="try" data-cmd="fuel">Try it →</button>
+          </div>
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+            <h3>Maintenance tracking</h3>
+            <p>Tracks service due dates and mileage — and reminds you before a vehicle is due at the workshop.</p>
+            <button class="try" data-cmd="maintenance">Try it →</button>
+          </div>
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <h3>Driver roster</h3>
+            <p>The weekly duty roster — which vehicle, which route, which shift — ready in Excel.</p>
+            <button class="try" data-cmd="roster">Try it →</button>
+          </div>
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <h3>Insurance &amp; registration</h3>
+            <p>Renewal dates are never missed — the agent reminds you 30, 15 and 3 days ahead.</p>
+            <button class="try" data-cmd="insurance">Try it →</button>
+          </div>
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10.4 12.6 8 15l2.4 2.4"/><path d="M15 8.5V6l4.5 4.5"/><path d="M4 4v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"/></svg></span>
+            <h3>Trip sheets &amp; expenses</h3>
+            <p>Daily trip sheets combined into a monthly expense report — in a format ready to send to a client.</p>
+            <button class="try" data-cmd="fuel">Try it →</button>
+          </div>
+          <div class="cap">
+            <span class="ic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+            <h3>Ask anything</h3>
+            <p>“Which vehicle costs me the most?” — the agent searches your files and answers; no report needed.</p>
+            <button class="try" data-cmd="fuel">Try it →</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Rules ===== -->
+      <section>
+        <div class="sec-head">
+          <h2>What the agent will and won't do</h2>
+          <p>Clear from day one: the agent is powerful, but some jobs are deliberately off-limits.</p>
+        </div>
+        <div class="rules">
+          <div class="rule-box yes">
+            <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--green)"><path d="M20 6 9 17l-5-5"/></svg> The agent will do all of this</h3>
+            <ul>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Read, search and combine the files you allow</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Build reports and export them to Excel / PDF</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Remind you about service, insurance and registration renewals</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Retry a failed step on its own, and tell you what happened</li>
+            </ul>
+          </div>
+          <div class="rule-box no">
+            <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="color:var(--red)"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> The agent will never do this</h3>
+            <ul>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Log in to any website or app, or enter an OTP / 2FA code</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Make a payment or do any banking task</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Delete a file or send anything to anyone without asking you first</li>
+              <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Live GPS tracking — that needs a GPS device in the vehicle or the provider's API</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== How it works ===== -->
+      <section>
+        <div class="sec-head"><h2>How it works</h2></div>
+        <div class="how">
+          <div class="step"><div class="n">01</div><h3>Install &amp; allow access</h3><p>The agent installs on the laptop. You choose only the folders it may read — the rest of the laptop stays closed to it.</p></div>
+          <div class="step"><div class="n">02</div><h3>Send a voice note — from anywhere</h3><p>Send a WhatsApp-style voice note or a typed command from your phone, wherever you are. The agent on the laptop picks it up and gets to work.</p></div>
+          <div class="step"><div class="n">03</div><h3>The agent does the work</h3><p>Every step shows on screen: which file it opened, how many rows it read, what the result was. Nothing is hidden.</p></div>
+          <div class="step"><div class="n">04</div><h3>Report in your hand</h3><p>The report on screen, and the Excel file too — sent back to your phone. If it needs forwarding, the agent confirms with you first.</p></div>
+        </div>
+      </section>
+
+      <footer>
+        <span><strong>Fleet AI Agent</strong> — prototype demo. All data is sample data, for presentation.</span>
+        <span>The live version runs on your laptop, with your real files — and you control it from anywhere.</span>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+      (function(){
+        "use strict";
+        var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        /* ---------- waveform ---------- */
+        var wave = document.getElementById("wave");
+        var bars = [];
+        for (var i=0;i<36;i++){ var b=document.createElement("i"); wave.appendChild(b); bars.push(b); }
+        var waveTimer=null;
+        function waveStart(){ wave.classList.add("live"); if(reduced) return;
+          waveTimer=setInterval(function(){ bars.forEach(function(b){ b.style.height=(6+Math.random()*36)+"px"; }); },130); }
+        function waveStop(){ wave.classList.remove("live"); if(waveTimer) clearInterval(waveTimer);
+          bars.forEach(function(b){ b.style.height="8px"; }); }
+
+        /* ---------- data ---------- */
+        var REPORTS = {
+          fuel: {
+            cmd:"Open the fuel file, make the November fuel report and export it to Excel",
+            file:"fuel", fileLine:"fuel_log_2026.xlsx opened", readLine:"1,248 fuel entries read · 48 vehicles · Nov 2026",
+            title:"November 2026 — Fuel Report", sub:"Source: fuel_log_2026.xlsx · Built by the agent from 1,248 entries",
+            stats:[["AED 86,420","Total fuel spend"],["18,940 L","Total fuel"],["AED 0.62","Average cost / km"],["3","High-spend vehicles"]],
+            head:["Vehicle","Driver","Fuel (L)","Spend (AED)","Cost / km"],
+            rows:[
+              ["DXB K-48291 · Toyota Hilux","Ahmed Raza","2,140","9,844","0.58"],
+              ["DXB M-19374 · Nissan Patrol","Bilal Hussain","2,610","12,267","0.81"],
+              ["DXB J-72015 · Mitsubishi Pajero","Suresh Kumar","1,980","8,910","0.55"],
+              ["DXB K-30982 · Ford Ranger","Mohammed Faizan","2,205","10,143","0.63"],
+              ["DXB L-55108 · Toyota Land Cruiser","Arun Prakash","2,540","11,938","0.79"],
+              ["DXB N-66420 · Isuzu D-Max","Imran Sheikh","1,720","7,396","0.52"]
+            ],
+            total:["Top 6 vehicles — total","","13,195","60,498",""],
+            note:"Agent's note: the Nissan Patrol and Land Cruiser cost per km is 30% above the fleet average — an engine check is recommended."
+          },
+          maintenance: {
+            cmd:"Which vehicles are due for service this week? Make a list",
+            file:"maintenance", fileLine:"maintenance_records.xlsx opened", readLine:"Service history checked for all 48 vehicles",
+            title:"Service Due — This Week", sub:"Source: maintenance_records.xlsx · Due date or mileage, whichever comes first",
+            stats:[["6","Vehicles due"],["2","Overdue"],["1","Due today"],["AED 7,850","Estimated cost"]],
+            head:["Vehicle","Last service","Reason","Status","Est. cost (AED)"],
+            rows:[
+              ["DXB M-19374 · Nissan Patrol","14 Aug 2026","3 days overdue","Overdue","1,450"],
+              ["DXB J-72015 · Mitsubishi Pajero","02 Sep 2026","Mileage reached (10,000 km)","Overdue","980"],
+              ["DXB K-48291 · Toyota Hilux","20 Sep 2026","Due today","Due today","1,150"],
+              ["DXB L-55108 · Toyota Land Cruiser","28 Sep 2026","Due in 2 days","Due soon","2,300"],
+              ["DXB N-66420 · Isuzu D-Max","05 Oct 2026","Due in 5 days","Due soon","870"],
+              ["DXB K-30982 · Ford Ranger","11 Oct 2026","Due in 6 days","Due soon","1,100"]
+            ],
+            total:null,
+            note:"Agent's note: 2 overdue vehicles are still on the road — booking them first is recommended. Your confirmation is needed before reminders are sent to drivers."
+          },
+          roster: {
+            cmd:"Make next week's driver duty roster",
+            file:"roster", fileLine:"driver_roster.xlsx opened", readLine:"32 drivers · 48 vehicles · routes matched",
+            title:"Driver Duty Roster — Next Week", sub:"Source: driver_roster.xlsx · Built after checking leave and shift rules",
+            stats:[["32","Drivers rostered"],["48","Vehicles assigned"],["6","Routes covered"],["0","Shift conflicts"]],
+            head:["Driver","Vehicle","Route","Shift"],
+            rows:[
+              ["Ahmed Raza","DXB K-48291 · Hilux","Dubai → Sharjah","Morning 6–2"],
+              ["Bilal Hussain","DXB M-19374 · Patrol","Dubai → Abu Dhabi","Morning 6–2"],
+              ["Suresh Kumar","DXB J-72015 · Pajero","Jebel Ali local","Afternoon 2–10"],
+              ["Mohammed Faizan","DXB K-30982 · Ranger","Dubai → Ajman","Morning 6–2"],
+              ["Arun Prakash","DXB L-55108 · Land Cruiser","VIP / Airport","Night 10–6"],
+              ["Imran Sheikh","DXB N-66420 · D-Max","Al Ain route","Afternoon 2–10"]
+            ],
+            total:null,
+            note:"Agent's note: Arun Prakash is off on Friday — the VIP route that day has been given to backup driver Salman Tariq."
+          },
+          insurance: {
+            cmd:"Show me the vehicles with insurance or registration renewals coming up",
+            file:"insurance", fileLine:"insurance_policies.pdf opened", readLine:"Expiry dates extracted from 48 policies",
+            title:"Renewals — Next 30 Days", sub:"Source: insurance_policies.pdf · The agent will remind you 30/15/3 days ahead",
+            stats:[["3","Renewals in 30 days"],["2","Insurance"],["1","Registration"],["9 days","Nearest expiry"]],
+            head:["Vehicle","Type","Expiry","Days left"],
+            rows:[
+              ["DXB M-19374 · Nissan Patrol","Insurance","27 Nov 2026","9"],
+              ["DXB K-30982 · Ford Ranger","Registration","05 Dec 2026","17"],
+              ["DXB J-72015 · Mitsubishi Pajero","Insurance","14 Dec 2026","26"]
+            ],
+            total:null,
+            note:"Agent's note: the Nissan Patrol's insurance expires in 9 days — the renewal process should start now. The agent will never pay; it only reminds you and prepares the documents."
+          }
+        };
+
+        var FLEET = [
+          {plate:"DXB K-48291", model:"Toyota Hilux", driver:"Ahmed Raza", status:"trip", statusLabel:"On the road", fuel:68, km:"182,400", service:"Due today", due:true},
+          {plate:"DXB M-19374", model:"Nissan Patrol", driver:"Bilal Hussain", status:"trip", statusLabel:"On the road", fuel:34, km:"210,750", service:"3 days overdue", due:true},
+          {plate:"DXB J-72015", model:"Mitsubishi Pajero", driver:"Suresh Kumar", status:"workshop", statusLabel:"In workshop", fuel:52, km:"164,020", service:"Service in progress", due:true},
+          {plate:"DXB K-30982", model:"Ford Ranger", driver:"Mohammed Faizan", status:"trip", statusLabel:"On the road", fuel:81, km:"98,330", service:"In 6 days", due:true},
+          {plate:"DXB L-55108", model:"Toyota Land Cruiser", driver:"Arun Prakash", status:"trip", statusLabel:"On the road", fuel:47, km:"231,900", service:"In 2 days", due:true},
+          {plate:"DXB N-66420", model:"Isuzu D-Max", driver:"Imran Sheikh", status:"idle", statusLabel:"Idle", fuel:92, km:"76,540", service:"In 5 days", due:true},
+          {plate:"DXB P-90217", model:"Toyota Hiace", driver:"Salman Tariq", status:"idle", statusLabel:"Idle", fuel:75, km:"143,210", service:"Jan 2027", due:false},
+          {plate:"DXB R-11863", model:"Nissan Urvan", driver:"Deepak Nair", status:"workshop", statusLabel:"In workshop", fuel:20, km:"198,870", service:"Tyre + brake work", due:false}
+        ];
+
+        /* ---------- fleet table ---------- */
+        var fleetBody = document.getElementById("fleetBody");
+        function badgeClass(s){ return s==="trip"?"b-green":s==="workshop"?"b-amber":"b-grey"; }
+        function renderFleet(f){
+          fleetBody.innerHTML = FLEET.filter(function(v){ return f==="all"||v.status===f||(f==="due"&&v.due); }).map(function(v){
+            var fc = v.fuel<40?"fuelbar low":v.fuel<60?"fuelbar mid":"fuelbar";
+            return "<tr>"+
+              "<td data-label='Vehicle'><strong>"+v.plate+"</strong> · "+v.model+"</td>"+
+              "<td data-label='Driver'>"+v.driver+"</td>"+
+              "<td data-label='Status'><span class='badge "+badgeClass(v.status)+"'>"+v.statusLabel+"</span></td>"+
+              "<td data-label='Fuel'><span class='"+fc+"'><i style='width:"+v.fuel+"%'></i></span> <span class='mono'>"+v.fuel+"%</span></td>"+
+              "<td data-label='Mileage' class='num'>"+v.km+"</td>"+
+              "<td data-label='Next service'>"+v.service+"</td></tr>";
+          }).join("");
+        }
+        renderFleet("all");
+        document.getElementById("fleetFilters").addEventListener("click", function(e){
+          var b = e.target.closest(".fbtn"); if(!b) return;
+          this.querySelectorAll(".fbtn").forEach(function(x){ x.classList.remove("on"); });
+          b.classList.add("on"); renderFleet(b.getAttribute("data-f"));
+        });
+
+        /* ---------- agent run ---------- */
+        var micBtn=document.getElementById("micBtn"), statusPill=document.getElementById("statusPill"),
+            statusText=document.getElementById("statusText"), transcriptEl=document.getElementById("transcriptText"),
+            recTime=document.getElementById("recTime"), stepsEls=document.querySelectorAll("#steps [data-step]"),
+            resultEl=document.getElementById("result"), sendBtn=document.getElementById("sendBtn"),
+            running=false, currentReport=null, timers=[];
+
+        function later(fn,ms){ timers.push(setTimeout(fn, reduced?60:ms)); }
+        function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+        function setStatus(txt,busy){ statusText.textContent=txt; statusPill.classList.toggle("busy",!!busy); }
+        function toast(msg){ var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+          setTimeout(function(){ t.classList.remove("show"); },3400); }
+
+        function typeText(text, done){
+          if(reduced){ transcriptEl.textContent="“"+text+"”"; done&&done(); return; }
+          transcriptEl.innerHTML=""; var span=document.createElement("span"); var caret=document.createElement("span");
+          caret.className="caret"; transcriptEl.appendChild(span); transcriptEl.appendChild(caret);
+          var i=0; var iv=setInterval(function(){ i++; span.textContent="“"+text.slice(0,i)+(i>=text.length?"”":"");
+            if(i>=text.length){ clearInterval(iv); caret.remove(); done&&done(); } },26);
+        }
+
+        function resetSteps(){
+          stepsEls.forEach(function(li){ li.classList.remove("active","done");
+            var ic=li.querySelector(".ic"); ic.innerHTML=ic.textContent.replace(/\D/g,"")||""; });
+          document.querySelectorAll("#fileList li").forEach(function(li){ li.classList.remove("open"); });
+        }
+
+        function runReport(key, customText){
+          if(running) return; running=true; sendBtn.disabled=true; micBtn.disabled=true;
+          clearTimers(); resetSteps(); resultEl.classList.remove("show");
+          var R=REPORTS[key]; currentReport=R;
+          var spoken = customText || R.cmd;
+          document.querySelector('[data-file-line]').textContent=R.fileLine;
+          document.querySelector('[data-read-line]').textContent=R.readLine;
+
+          setStatus("Listening…", true); micBtn.classList.add("listening"); waveStart();
+          recTime.textContent="REC 0:0"+(3+Math.floor(Math.random()*4));
+
+          later(function(){
+            micBtn.classList.remove("listening"); waveStop();
+            setStatus("Command received — getting to work", true);
+            typeText(spoken, function(){
+              stepsEls.forEach(function(li, idx){
+                later(function(){
+                  stepsEls.forEach(function(x){ x.classList.remove("active"); });
+                  li.classList.add("active");
+                  var ic=li.querySelector(".ic"); ic.innerHTML="<span class='spin'></span>";
+                  if(idx===1){ var fl=document.querySelector('#fileList li[data-file="'+R.file+'"]'); if(fl) fl.classList.add("open"); }
+                  setStatus(["Understanding your voice…","Opening the file…","Reading the data…","Building the report…","Preparing the Excel file…"][idx], true);
+                }, idx*950);
+                later(function(){ li.classList.remove("active"); li.classList.add("done");
+                  li.querySelector(".ic").innerHTML="<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6 9 17l-5-5'/></svg>";
+                }, idx*950+880);
+              });
+              later(function(){ showResult(R); running=false; sendBtn.disabled=false; micBtn.disabled=false;
+                setStatus("Ready — your report is done", false); }, stepsEls.length*950+500);
+            });
+          }, 1100);
+        }
+
+        function showResult(R){
+          document.getElementById("resultTitle").textContent=R.title;
+          document.getElementById("resultSub").textContent=R.sub+" · "+R.note;
+          document.getElementById("resultStats").innerHTML = R.stats.map(function(s){
+            return "<div><div class='v'>"+s[0]+"</div><div class='k'>"+s[1]+"</div></div>"; }).join("");
+          var t="<thead><tr>"+R.head.map(function(h,i){ return "<th class='"+(i>=2?"num":"")+"'>"+h+"</th>"; }).join("")+"</tr></thead><tbody>";
+          R.rows.forEach(function(r){ t+="<tr>"+r.map(function(c,i){ return "<td data-label='"+R.head[i]+"' class='"+(i>=2?"num":"")+"'>"+c+"</td>"; }).join("")+"</tr>"; });
+          if(R.total){ t+="<tr class='total'>"+R.total.map(function(c,i){ return "<td data-label='"+R.head[i]+"' class='"+(i>=2?"num":"")+"'>"+c+"</td>"; }).join("")+"</tr>"; }
+          t+="</tbody>";
+          document.getElementById("resultTable").innerHTML=t;
+          resultEl.classList.add("show");
+          resultEl.scrollIntoView({behavior: reduced?"auto":"smooth", block:"start"});
+        }
+
+        function pickReport(text){
+          var s=(text||"").toLowerCase();
+          if(/service|maintenance|due|workshop/.test(s)) return "maintenance";
+          if(/roster|duty|driver|shift/.test(s)) return "roster";
+          if(/insurance|registration|renewal|expiry/.test(s)) return "insurance";
+          return "fuel";
+        }
+
+        document.querySelectorAll("[data-cmd]").forEach(function(el){
+          el.addEventListener("click", function(){
+            document.getElementById("console").scrollIntoView({behavior: reduced?"auto":"smooth", block:"start"});
+            setTimeout(function(){ runReport(el.getAttribute("data-cmd")); }, reduced?0:350);
+          });
+        });
+        micBtn.addEventListener("click", function(){ runReport("fuel"); });
+        document.getElementById("cmdForm").addEventListener("submit", function(e){
+          e.preventDefault();
+          var v=document.getElementById("cmdInput").value.trim();
+          runReport(pickReport(v), v || null);
+        });
+
+        document.getElementById("anotherBtn").addEventListener("click", function(){
+          document.getElementById("console").scrollIntoView({behavior: reduced?"auto":"smooth"});
+          document.getElementById("cmdInput").focus();
+        });
+
+        /* ---------- Excel (CSV) download ---------- */
+        document.getElementById("downloadBtn").addEventListener("click", function(){
+          if(!currentReport) return;
+          var R=currentReport;
+          function esc(v){ v=String(v==null?"":v); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"' : v; }
+          var lines=[R.title, R.sub, "", R.head.map(esc).join(",")];
+          R.rows.forEach(function(r){ lines.push(r.map(esc).join(",")); });
+          if(R.total) lines.push(R.total.map(esc).join(","));
+          lines.push("", R.note);
+          var blob=new Blob(["\ufeff"+lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
+          var a=document.createElement("a");
+          a.href=URL.createObjectURL(blob);
+          a.download=R.title.replace(/[^a-zA-Z0-9]+/g,"_")+".csv";
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+          toast("Excel file downloaded — "+a.download+" (opens in Excel)");
+        });
+      })();
+    </script>
+  </body>
+</html>
